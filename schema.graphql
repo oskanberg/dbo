@@ -1,0 +1,20 @@
+
+""" Time is represented in RFC3339 format (e.g. 2018-07-29T12:00:00Z) """
+scalar Time
+
+type Film {
+	id: ID!
+	bomID: String
+	title: String
+    grossDaily(from: Time, to: Time): [DailyGross!]!
+}
+
+type DailyGross {
+	id:   ID!
+	Date: Time!
+	Gross: Int
+}
+
+type Query {
+    getFilm(id: ID!): Film
+}

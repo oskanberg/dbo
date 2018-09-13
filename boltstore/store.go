@@ -1,24 +1,16 @@
 package boltstore
 
 import (
-	"fmt"
-	"log"
 	"time"
 
 	"github.com/asdine/storm"
-	"github.com/oskanberg/dbo"
+	"github.com/oskanberg/dbo/model"
 )
 
 type Closer func() error
 
 type Store struct {
 	DB *storm.DB
-}
-
-type Details struct {
-	ID    int    `storm:"id,increment"`
-	BOMID string `storm:"unique"`
-	Title string
 }
 
 func New(dbLocation string) (*Store, Closer, error) {
@@ -33,17 +25,17 @@ func New(dbLocation string) (*Store, Closer, error) {
 	return &Store{db}, db.Close, nil
 }
 
-func (s *Store) UpsertDetails(BOMID string, title string) (int, error) {
+func (s *Store) UpsertDetails(BOMID string, title string) (string, error) {
 	d := s.DB.From("details")
 
-	deets := Details{
-		BOMID: BOMID,
-		Title: title,
-	}
+	deets := FilmTODTO(model.Film{
+		BomID: &BOMID,
+		Title: &title,
+	})
 
 	err := d.Save(&deets)
 	if err == storm.ErrAlreadyExists {
-		detail := Details{}
+		detail := FilmDTO{}
 		d.One("BOMID", BOMID, &detail)
 		deets.ID = detail.ID
 		err = d.Update(&deets)
@@ -52,37 +44,33 @@ func (s *Store) UpsertDetails(BOMID string, title string) (int, error) {
 	return deets.ID, err
 }
 
-func (s *Store) AddDailyGross(id int, date time.Time, gross int) error {
+func (s *Store) AddDailyGross(id string, date time.Time, gross int) error {
 	db := s.DB.From("gross").From("daily")
 
 	g := DailyGrossToDTO(
-		dbo.DailyGross{
+		model.DailyGross{
 			ID:    id,
 			Date:  date,
-			Gross: gross,
+			Gross: &gross,
 		})
 	err := db.Save(&g)
 
 	return err
 }
 
-func (s *Store) GetDetails(ID int) (dbo.Details, error) {
+func (s *Store) GetDetails(ID string) (model.Film, error) {
 	d := s.DB.From("details")
 
-	deets := Details{}
+	deets := FilmDTO{}
 	err := d.One("ID", ID, &deets)
 	if err != nil {
-		return dbo.Details{}, err
+		return model.Film{}, err
 	}
 
-	return dbo.Details{
-		ID:    deets.ID,
-		BOMID: deets.BOMID,
-		Title: deets.Title,
-	}, nil
+	return DTOToFilm(deets), nil
 }
 
-func (s *Store) GetGross(ID int) ([]dbo.DailyGross, error) {
+func (s *Store) GetGross(ID int) ([]model.DailyGross, error) {
 	db := s.DB.From("gross").From("daily")
 
 	records := make([]DailyGrossDTO, 0)
@@ -91,34 +79,14 @@ func (s *Store) GetGross(ID int) ([]dbo.DailyGross, error) {
 		return nil, err
 	}
 
-	result := make([]dbo.DailyGross, len(records))
+	result := make([]model.DailyGross, len(records))
 	for i, v := range records {
-		result[i] = dbo.DailyGross{
+		result[i] = model.DailyGross{
 			ID:    v.ID,
 			Date:  v.Date,
-			Gross: v.Gross,
+			Gross: &v.Gross,
 		}
 	}
 
 	return result, err
-}
-
-func (s *Store) ListDailyGross() {
-	var records []Details
-
-	db := s.DB.From("details")
-	err := db.All(&records)
-	if err != nil {
-		panic(err)
-	}
-
-	for _, r := range records {
-		gross, err := s.GetGross(r.ID)
-		if err != nil {
-			log.Println(r.ID, err)
-			fmt.Printf("%v: no gross\n", r.Title)
-			continue
-		}
-		fmt.Printf("%v:%v\n", r.Title, gross)
-	}
 }

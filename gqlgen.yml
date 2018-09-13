@@ -1,0 +1,8 @@
+
+schema: schema.graphql
+exec:
+  filename: graph/exec.go
+  package: graph
+model:
+  filename: model/models.go
+  package: model

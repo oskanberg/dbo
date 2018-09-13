@@ -3,9 +3,15 @@ package main
 import (
 	"flag"
 	"log"
+	"net/http"
+	"os"
+	"strconv"
 	"time"
 
 	"github.com/oskanberg/dbo/boltstore"
+	"github.com/oskanberg/dbo/graph"
+	"github.com/oskanberg/dbo/graph/resolvers"
+	"github.com/vektah/gqlgen/handler"
 
 	"github.com/oskanberg/dbo"
 )
@@ -40,21 +46,34 @@ func fetchAndStore(db *boltstore.Store, date time.Time) {
 }
 
 func main() {
-	wordPtr := flag.String("db", "gross.db", "database file")
+	dbFile := flag.String("db", "gross.db", "database file")
+	serve := flag.Bool("serve", false, "serve the database via an API")
+	portInt := flag.Int("port", 8080, "serve port")
+	portStr := strconv.Itoa(*portInt)
+
 	flag.Parse()
 
-	store, close, err := boltstore.New(*wordPtr)
+	store, close, err := boltstore.New(*dbFile)
 	if err != nil {
 		log.Fatalf("error creating store, %s", err)
 	}
 	defer close()
 
-	for i := 0; i < 100; i++ {
-		date := time.Now().
-			Add(time.Duration(-i) * day).
-			Truncate(24 * time.Hour)
-		fetchAndStore(store, date)
+	log.Println("fetching today's gross")
+
+	date := time.Now().Truncate(24 * time.Hour)
+	fetchAndStore(store, date)
+
+	if !*serve {
+		os.Exit(0)
 	}
 
-	store.ListDailyGross()
+	r := resolvers.NewRootResolver(store)
+
+	http.Handle("/", handler.Playground("GraphQL playground", "/query"))
+	http.Handle("/query", handler.GraphQL(graph.NewExecutableSchema(graph.Config{Resolvers: r})))
+
+	log.Printf("connect to http://localhost:%v/ for GraphQL playground", portStr)
+	log.Fatal(http.ListenAndServe(":"+portStr, nil))
+
 }
