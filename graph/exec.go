@@ -11,7 +11,7 @@ import (
 
 	graphql "github.com/99designs/gqlgen/graphql"
 	introspection "github.com/99designs/gqlgen/graphql/introspection"
-	model "github.com/oskanberg/dbo/model"
+	model "github.com/oskanberg/dbo/graph/model"
 	gqlparser "github.com/vektah/gqlparser"
 	ast "github.com/vektah/gqlparser/ast"
 )
@@ -32,6 +32,7 @@ type Config struct {
 }
 
 type ResolverRoot interface {
+	Film() FilmResolver
 	Query() QueryResolver
 }
 
@@ -57,6 +58,9 @@ type ComplexityRoot struct {
 	}
 }
 
+type FilmResolver interface {
+	GrossDaily(ctx context.Context, obj *model.Film, from *time.Time, to *time.Time) ([]model.DailyGross, error)
+}
 type QueryResolver interface {
 	GetFilm(ctx context.Context, id string) (*model.Film, error)
 }
@@ -175,14 +179,14 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.DailyGross.Id(childComplexity), true
 
-	case "DailyGross.Date":
+	case "DailyGross.date":
 		if e.complexity.DailyGross.Date == nil {
 			break
 		}
 
 		return e.complexity.DailyGross.Date(childComplexity), true
 
-	case "DailyGross.Gross":
+	case "DailyGross.gross":
 		if e.complexity.DailyGross.Gross == nil {
 			break
 		}
@@ -286,13 +290,13 @@ func (ec *executionContext) _DailyGross(ctx context.Context, sel ast.SelectionSe
 			if out.Values[i] == graphql.Null {
 				invalid = true
 			}
-		case "Date":
-			out.Values[i] = ec._DailyGross_Date(ctx, field, obj)
+		case "date":
+			out.Values[i] = ec._DailyGross_date(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				invalid = true
 			}
-		case "Gross":
-			out.Values[i] = ec._DailyGross_Gross(ctx, field, obj)
+		case "gross":
+			out.Values[i] = ec._DailyGross_gross(ctx, field, obj)
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -327,7 +331,7 @@ func (ec *executionContext) _DailyGross_id(ctx context.Context, field graphql.Co
 }
 
 // nolint: vetshadow
-func (ec *executionContext) _DailyGross_Date(ctx context.Context, field graphql.CollectedField, obj *model.DailyGross) graphql.Marshaler {
+func (ec *executionContext) _DailyGross_date(ctx context.Context, field graphql.CollectedField, obj *model.DailyGross) graphql.Marshaler {
 	rctx := &graphql.ResolverContext{
 		Object: "DailyGross",
 		Args:   nil,
@@ -349,7 +353,7 @@ func (ec *executionContext) _DailyGross_Date(ctx context.Context, field graphql.
 }
 
 // nolint: vetshadow
-func (ec *executionContext) _DailyGross_Gross(ctx context.Context, field graphql.CollectedField, obj *model.DailyGross) graphql.Marshaler {
+func (ec *executionContext) _DailyGross_gross(ctx context.Context, field graphql.CollectedField, obj *model.DailyGross) graphql.Marshaler {
 	rctx := &graphql.ResolverContext{
 		Object: "DailyGross",
 		Args:   nil,
@@ -377,6 +381,7 @@ var filmImplementors = []string{"Film"}
 func (ec *executionContext) _Film(ctx context.Context, sel ast.SelectionSet, obj *model.Film) graphql.Marshaler {
 	fields := graphql.CollectFields(ctx, sel, filmImplementors)
 
+	var wg sync.WaitGroup
 	out := graphql.NewOrderedMap(len(fields))
 	invalid := false
 	for i, field := range fields {
@@ -395,15 +400,19 @@ func (ec *executionContext) _Film(ctx context.Context, sel ast.SelectionSet, obj
 		case "title":
 			out.Values[i] = ec._Film_title(ctx, field, obj)
 		case "grossDaily":
-			out.Values[i] = ec._Film_grossDaily(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				invalid = true
-			}
+			wg.Add(1)
+			go func(i int, field graphql.CollectedField) {
+				out.Values[i] = ec._Film_grossDaily(ctx, field, obj)
+				if out.Values[i] == graphql.Null {
+					invalid = true
+				}
+				wg.Done()
+			}(i, field)
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
 	}
-
+	wg.Wait()
 	if invalid {
 		return graphql.Null
 	}
@@ -493,7 +502,7 @@ func (ec *executionContext) _Film_grossDaily(ctx context.Context, field graphql.
 	}
 	ctx = graphql.WithResolverContext(ctx, rctx)
 	resTmp := ec.FieldMiddleware(ctx, obj, func(ctx context.Context) (interface{}, error) {
-		return obj.GrossDaily, nil
+		return ec.resolvers.Film().GrossDaily(ctx, obj, args["from"].(*time.Time), args["to"].(*time.Time))
 	})
 	if resTmp == nil {
 		if !ec.HasError(rctx) {
@@ -1977,8 +1986,8 @@ type Film {
 
 type DailyGross {
 	id:   ID!
-	Date: Time!
-	Gross: Int
+	date: Time!
+	gross: Int
 }
 
 type Query {

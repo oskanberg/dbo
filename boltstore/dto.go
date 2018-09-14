@@ -3,7 +3,7 @@ package boltstore
 import (
 	"time"
 
-	"github.com/oskanberg/dbo/model"
+	"github.com/oskanberg/dbo/graph/model"
 )
 
 type DailyGrossDTO struct {

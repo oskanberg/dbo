@@ -4,5 +4,8 @@ exec:
   filename: graph/exec.go
   package: graph
 model:
-  filename: model/models.go
+  filename: graph/model/models.go
   package: model
+models:
+  Film:
+    model: github.com/oskanberg/dbo/graph/model.Film

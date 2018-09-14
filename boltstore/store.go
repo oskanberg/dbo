@@ -3,8 +3,11 @@ package boltstore
 import (
 	"time"
 
+	"github.com/asdine/storm/q"
+
 	"github.com/asdine/storm"
-	"github.com/oskanberg/dbo/model"
+	"github.com/google/uuid"
+	"github.com/oskanberg/dbo/graph/model"
 )
 
 type Closer func() error
@@ -28,17 +31,26 @@ func New(dbLocation string) (*Store, Closer, error) {
 func (s *Store) UpsertDetails(BOMID string, title string) (string, error) {
 	d := s.DB.From("details")
 
+	uuid, err := uuid.NewRandom()
+	if err != nil {
+		return "", err
+	}
+
 	deets := FilmTODTO(model.Film{
+		ID:    uuid.String(),
 		BomID: &BOMID,
 		Title: &title,
 	})
 
-	err := d.Save(&deets)
+	err = d.Save(&deets)
 	if err == storm.ErrAlreadyExists {
 		detail := FilmDTO{}
 		d.One("BOMID", BOMID, &detail)
 		deets.ID = detail.ID
 		err = d.Update(&deets)
+	}
+	if err != nil {
+		return "", err
 	}
 
 	return deets.ID, err
@@ -54,7 +66,6 @@ func (s *Store) AddDailyGross(id string, date time.Time, gross int) error {
 			Gross: &gross,
 		})
 	err := db.Save(&g)
-
 	return err
 }
 
@@ -70,21 +81,31 @@ func (s *Store) GetDetails(ID string) (model.Film, error) {
 	return DTOToFilm(deets), nil
 }
 
-func (s *Store) GetGross(ID int) ([]model.DailyGross, error) {
+// GetGross gets the gross between two ranges
+func (s *Store) GetGross(ID string, from, to time.Time) ([]model.DailyGross, error) {
 	db := s.DB.From("gross").From("daily")
 
 	records := make([]DailyGrossDTO, 0)
-	err := db.Find("ID", ID, &records)
+	query := db.Select(
+		q.And(
+			q.Eq("ID", ID),
+			q.Lte("Date", to),
+			q.Gte("Date", from),
+		),
+	)
+	err := query.Find(&records)
+
 	if err != nil {
 		return nil, err
 	}
 
 	result := make([]model.DailyGross, len(records))
 	for i, v := range records {
+		g := v.Gross
 		result[i] = model.DailyGross{
 			ID:    v.ID,
 			Date:  v.Date,
-			Gross: &v.Gross,
+			Gross: &g,
 		}
 	}
 

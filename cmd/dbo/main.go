@@ -45,9 +45,27 @@ func fetchAndStore(db *boltstore.Store, date time.Time) {
 
 }
 
+func enableCORS(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "OPTIONS, POST")
+		w.Header().Set("Access-Control-Allow-Headers", "Accept, Authorization, Content-Type, Content-Length, Accept-Encoding")
+
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		h.ServeHTTP(w, r)
+	})
+}
+
 func main() {
 	dbFile := flag.String("db", "gross.db", "database file")
 	serve := flag.Bool("serve", false, "serve the database via an API")
+	fetchDate := flag.String("date", time.Now().Format("2006-01-02"), "date to load")
+	lookupDays := flag.Int("days", 0, "number of days to fetch (looks back)")
+
 	portInt := flag.Int("port", 8080, "serve port")
 	portStr := strconv.Itoa(*portInt)
 
@@ -59,10 +77,16 @@ func main() {
 	}
 	defer close()
 
-	log.Println("fetching today's gross")
+	date, err := time.Parse("2006-01-02", *fetchDate)
+	if err != nil {
+		log.Println("failed to parse date", err)
+		os.Exit(1)
+	}
 
-	date := time.Now().Truncate(24 * time.Hour)
-	fetchAndStore(store, date)
+	for i := 0; i < *lookupDays; i++ {
+		//TODO: async
+		fetchAndStore(store, date.Add(time.Duration(-i)*24*time.Hour).Truncate(24*time.Hour))
+	}
 
 	if !*serve {
 		os.Exit(0)
@@ -70,8 +94,9 @@ func main() {
 
 	r := resolvers.NewRootResolver(store)
 
+	gqlHandler := handler.GraphQL(graph.NewExecutableSchema(graph.Config{Resolvers: r}))
 	http.Handle("/", handler.Playground("GraphQL playground", "/query"))
-	http.Handle("/query", handler.GraphQL(graph.NewExecutableSchema(graph.Config{Resolvers: r})))
+	http.Handle("/query", enableCORS(gqlHandler))
 
 	log.Printf("connect to http://localhost:%v/ for GraphQL playground", portStr)
 	log.Fatal(http.ListenAndServe(":"+portStr, nil))

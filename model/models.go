@@ -11,10 +11,3 @@ type DailyGross struct {
 	Date  time.Time `json:"Date"`
 	Gross *int      `json:"Gross"`
 }
-
-type Film struct {
-	ID         string       `json:"id"`
-	BomID      *string      `json:"bomID"`
-	Title      *string      `json:"title"`
-	GrossDaily []DailyGross `json:"grossDaily"`
-}

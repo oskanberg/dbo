@@ -11,8 +11,8 @@ type Film {
 
 type DailyGross {
 	id:   ID!
-	Date: Time!
-	Gross: Int
+	date: Time!
+	gross: Int
 }
 
 type Query {
