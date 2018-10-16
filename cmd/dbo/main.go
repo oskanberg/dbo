@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/oskanberg/dbo/boltstore"
@@ -83,10 +84,15 @@ func main() {
 		os.Exit(1)
 	}
 
+	var wg sync.WaitGroup
+	wg.Add(*lookupDays)
 	for i := 0; i < *lookupDays; i++ {
-		//TODO: async
-		fetchAndStore(store, date.Add(time.Duration(-i)*24*time.Hour).Truncate(24*time.Hour))
+		go func(offset int) {
+			fetchAndStore(store, date.Add(time.Duration(-offset)*24*time.Hour).Truncate(24*time.Hour))
+			wg.Done()
+		}(i)
 	}
+	wg.Wait()
 
 	if !*serve {
 		os.Exit(0)
